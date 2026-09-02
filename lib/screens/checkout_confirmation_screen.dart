@@ -7,9 +7,7 @@ class CheckoutConfirmationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Checkout Confirmation'),
-      ),
+      appBar: AppBar(title: const Text('Checkout Confirmation')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

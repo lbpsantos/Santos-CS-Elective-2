@@ -6,19 +6,27 @@ void main() {
   runApp(const MyApp());
 }
 
-// App entry widget
+// entry of the app
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      debugShowCheckedModeBanner: false,
-      title: 'Anime/Movies Backlog',
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      routerConfig: appRouter,
+    // theme toggle (Light / Dark mode)
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, currentThemeMode, _) {
+        return MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          title: 'Shop App',
+          // theme configurations
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: currentThemeMode,
+          //  loads homescreen
+          routerConfig: appRouter,
+        );
+      },
     );
   }
 }
