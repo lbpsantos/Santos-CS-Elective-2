@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../models/product.dart';
 import '../screens/cart_screen.dart';
 import '../screens/checkout_confirmation_screen.dart';
 import '../screens/home_screen.dart';
@@ -23,7 +24,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.productDetail,
-      builder: (context, state) => const ProductDetailScreen(),
+      builder: (context, state) {
+        final product = state.extra as Product? ?? sampleProducts.first;
+        return ProductDetailScreen(product: product);
+      },
     ),
     GoRoute(
       path: AppRoutes.cart,
