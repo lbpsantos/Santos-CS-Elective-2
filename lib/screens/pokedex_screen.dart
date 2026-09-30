@@ -1,3 +1,4 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../models/pokemon.dart';
 import '../services/pokemon_service.dart';
@@ -5,7 +6,14 @@ import '../widgets/pokemon_card.dart';
 
 // Main screen that shows the Pokemon grid.
 class PokedexScreen extends StatefulWidget {
-  const PokedexScreen({super.key});
+  final bool isDarkMode;
+  final VoidCallback onToggleTheme;
+
+  const PokedexScreen({
+    super.key,
+    required this.isDarkMode,
+    required this.onToggleTheme,
+  });
 
   @override
   State<PokedexScreen> createState() => _PokedexScreenState();
@@ -14,6 +22,8 @@ class PokedexScreen extends StatefulWidget {
 class _PokedexScreenState extends State<PokedexScreen> {
   final PokemonService service = PokemonService();
   late Future<List<Pokemon>> futurePokemon;
+  final AudioPlayer player = AudioPlayer();
+  bool isPlaying = false;
 
   @override
   void initState() {
@@ -22,13 +32,51 @@ class _PokedexScreenState extends State<PokedexScreen> {
     futurePokemon = service.fetchPokemon();
   }
 
+  // Play or stop the background music.
+  Future<void> toggleMusic() async {
+    try {
+      if (isPlaying) {
+        await player.stop();
+      } else {
+        await player.setReleaseMode(ReleaseMode.loop);
+        await player.play(AssetSource('music/bgm.mp3'));
+      }
+      setState(() => isPlaying = !isPlaying);
+    } catch (e) {
+      // Shows a message if the music file is missing.
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not play music.')));
+    }
+  }
+
+  @override
+  void dispose() {
+    player.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pokédex'),
-        backgroundColor: Colors.red,
+        backgroundColor: widget.isDarkMode
+            ? Colors.blue[900]
+            : Colors.blue[800],
         foregroundColor: Colors.white,
+        actions: [
+          // Dark/light mode button.
+          IconButton(
+            onPressed: widget.onToggleTheme,
+            icon: Icon(widget.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+          ),
+          IconButton(
+            onPressed: toggleMusic,
+            icon: Icon(isPlaying ? Icons.music_note : Icons.music_off),
+          ),
+        ],
       ),
       body: FutureBuilder<List<Pokemon>>(
         future: futurePokemon,
@@ -44,7 +92,7 @@ class _PokedexScreenState extends State<PokedexScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error, color: Colors.red, size: 50),
+                  Icon(Icons.error, color: Colors.blue[800], size: 50),
                   const SizedBox(height: 8),
                   Text('Error: ${snapshot.error}'),
                   const SizedBox(height: 8),
