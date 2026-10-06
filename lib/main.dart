@@ -1,28 +1,32 @@
 import 'package:flutter/material.dart';
-import 'screens/pokedex_screen.dart';
+import 'package:provider/provider.dart';
+import 'pages/pokedex_page.dart';
+import 'providers/pokemon_provider.dart';
+import 'providers/settings_provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        // Fetch the Pokemon as soon as the provider is created.
+        ChangeNotifierProvider(
+          create: (context) => PokemonProvider()..fetchPokemon(),
+        ),
+        ChangeNotifierProvider(create: (context) => SettingsProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 // App entry widget.
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  bool isDarkMode = false;
-
-  // Switch between light and dark mode.
-  void toggleTheme() {
-    setState(() => isDarkMode = !isDarkMode);
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final isDarkMode = context.watch<SettingsProvider>().isDarkMode;
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Pokédex',
@@ -42,7 +46,7 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      home: PokedexScreen(isDarkMode: isDarkMode, onToggleTheme: toggleTheme),
+      home: const PokedexPage(),
     );
   }
 }
