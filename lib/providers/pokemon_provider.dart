@@ -1,49 +1,64 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../models/pokemon.dart';
 
-// Holds the Pokemon data and the loading/error states.
-class PokemonProvider extends ChangeNotifier {
+// Handles loading the Pokemon list from the API.
+// The state is an AsyncValue, so it can be loading, data or error.
+class PokemonListNotifier extends AsyncNotifier<List<Pokemon>> {
   static const String baseUrl = 'https://pokeapi.co/api/v2/pokemon';
 
-  List<Pokemon> pokemonList = [];
-  bool isLoading = false;
-  String? errorMessage;
+  // Runs the first time the provider is used, so the list loads on startup.
+  @override
+  Future<List<Pokemon>> build() => _getPokemonFromApi();
 
-  // The Pokemon that was tapped (used by the details page).
-  Pokemon? selectedPokemon;
-
-  // Fetch the first 30 Pokemon. Also used for refresh.
+  // Fetch the Pokemon again. Used by the refresh button and pull to refresh.
   Future<void> fetchPokemon() async {
     // Loading state.
-    isLoading = true;
-    errorMessage = null;
-    notifyListeners();
+    state = const AsyncLoading();
+    // guard() catches any error and turns it into an AsyncError (error state).
+    state = await AsyncValue.guard(_getPokemonFromApi);
+  }
 
-    try {
-      final response = await http.get(Uri.parse('$baseUrl?limit=30'));
+  // Get the first 30 Pokemon from the API.
+  Future<List<Pokemon>> _getPokemonFromApi() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl?limit=30'))
+        .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List results = data['results'];
-        // Success state.
-        pokemonList = results.map((item) => Pokemon.fromJson(item)).toList();
-      } else {
-        throw Exception('Failed to load Pokemon');
-      }
-    } catch (e) {
-      // Error state.
-      errorMessage = e.toString();
+    if (response.statusCode != 200) {
+      throw Exception('Server returned ${response.statusCode}');
     }
 
-    isLoading = false;
-    notifyListeners();
+    final data = jsonDecode(response.body);
+    final List results = data['results'];
+
+    // The list only has the name and url, so we also need each Pokemon's
+    // details to get its types. Future.wait sends all requests at the same
+    // time instead of one by one.
+    return Future.wait(
+      results.map((item) => _getPokemonDetails(item['url'] as String)),
+    );
   }
 
-  // Save the tapped Pokemon so the details page can read it.
-  void selectPokemon(Pokemon pokemon) {
-    selectedPokemon = pokemon;
-    notifyListeners();
+  // Get one Pokemon's details (id, name, types).
+  Future<Pokemon> _getPokemonDetails(String url) async {
+    final response = await http
+        .get(Uri.parse(url))
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode != 200) {
+      throw Exception('Server returned ${response.statusCode}');
+    }
+
+    return Pokemon.fromJson(jsonDecode(response.body));
   }
 }
+
+final pokemonListProvider =
+    AsyncNotifierProvider<PokemonListNotifier, List<Pokemon>>(
+      PokemonListNotifier.new,
+      // Riverpod 3 retries failed providers automatically. We turn that off so
+      // the error message shows right away and the user can press Retry.
+      retry: (retryCount, error) => null,
+    );

@@ -3,21 +3,40 @@ class Pokemon {
   final int id;
   final String name;
   final String imageUrl;
+  final List<String> types;
 
-  Pokemon({required this.id, required this.name, required this.imageUrl});
+  Pokemon({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.types,
+  });
 
-  // Build a Pokemon from the API json.
+  // Build a Pokemon from the details json (.../pokemon/25/).
   factory Pokemon.fromJson(Map<String, dynamic> json) {
-    // Get the ID from the url (ex: .../pokemon/25/).
-    final url = json['url'] as String;
-    final parts = url.split('/');
-    final id = int.parse(parts[parts.length - 2]);
+    final id = json['id'] as int;
+
+    // "types" looks like: [{slot: 1, type: {name: grass, url: ...}}, ...]
+    final List typesJson = json['types'];
+    final types = typesJson
+        .map((item) => item['type']['name'] as String)
+        .toList();
 
     return Pokemon(
       id: id,
       name: json['name'],
       imageUrl:
           'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/$id.png',
+      types: types,
     );
   }
+
+  // Name with the first letter capitalized (ex: pikachu -> Pikachu).
+  String get displayName => capitalize(name);
+}
+
+// Capitalize the first letter of a word.
+String capitalize(String text) {
+  if (text.isEmpty) return text;
+  return text[0].toUpperCase() + text.substring(1);
 }

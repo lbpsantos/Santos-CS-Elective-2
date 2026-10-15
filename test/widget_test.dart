@@ -1,30 +1,53 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:my_first_flutter_ui/main.dart';
+import 'package:my_first_flutter_ui/models/pokemon.dart';
+import 'package:my_first_flutter_ui/providers/pokemon_provider.dart';
+
+// Fake notifier so the test doesn't need the internet.
+class FakePokemonListNotifier extends PokemonListNotifier {
+  @override
+  Future<List<Pokemon>> build() async => [
+    Pokemon(id: 1, name: 'bulbasaur', imageUrl: '', types: ['grass']),
+    Pokemon(id: 4, name: 'charmander', imageUrl: '', types: ['fire']),
+  ];
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Shows Pokemon, filters by type and adds a favorite', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pokemonListProvider.overrideWith(FakePokemonListNotifier.new),
+        ],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Bulbasaur'), findsOneWidget);
+    expect(find.text('Charmander'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Filter by Fire.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Fire'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bulbasaur'), findsNothing);
+    expect(find.text('Charmander'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Clear the filter.
+    await tester.tap(find.text('Clear filter'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bulbasaur'), findsOneWidget);
+
+    // Tap the heart on the first card, then open the favorites panel.
+    await tester.tap(find.byIcon(Icons.favorite_border).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Show favorites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Favorites (1)'), findsOneWidget);
   });
 }

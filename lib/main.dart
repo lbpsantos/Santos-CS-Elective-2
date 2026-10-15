@@ -1,31 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'pages/pokedex_page.dart';
-import 'providers/pokemon_provider.dart';
 import 'providers/settings_provider.dart';
 
 void main() {
-  runApp(
-    MultiProvider(
-      providers: [
-        // Fetch the Pokemon as soon as the provider is created.
-        ChangeNotifierProvider(
-          create: (context) => PokemonProvider()..fetchPokemon(),
-        ),
-        ChangeNotifierProvider(create: (context) => SettingsProvider()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  // ProviderScope stores the state of all the Riverpod providers.
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 // App entry widget.
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final isDarkMode = context.watch<SettingsProvider>().isDarkMode;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDarkMode = ref.watch(isDarkModeProvider);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,

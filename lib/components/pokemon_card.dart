@@ -1,19 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/pokemon.dart';
+import '../providers/favorites_provider.dart';
+import '../providers/nickname_provider.dart';
 import '../providers/settings_provider.dart';
 
 // Card that shows one Pokemon.
-class PokemonCard extends StatelessWidget {
+class PokemonCard extends ConsumerWidget {
   final Pokemon pokemon;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const PokemonCard({super.key, required this.pokemon, required this.onTap});
+  const PokemonCard({
+    super.key,
+    required this.pokemon,
+    required this.onTap,
+    this.onLongPress,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    // Check if the app is in dark mode.
-    final isDark = context.watch<SettingsProvider>().isDarkMode;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = ref.watch(isDarkModeProvider);
+    // select() so this card only rebuilds when ITS nickname or favorite
+    // status changes, not when another Pokemon changes.
+    final nickname = ref.watch(
+      nicknameProvider.select((nicknames) => nicknames[pokemon.id]),
+    );
+    final isFavorite = ref.watch(
+      favoritesProvider.select(
+        (favorites) => favorites.any((p) => p.id == pokemon.id),
+      ),
+    );
 
     return Card(
       elevation: 2,
@@ -29,15 +46,37 @@ class PokemonCard extends StatelessWidget {
       // Makes the card clickable.
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: Column(
             children: [
-              Text(
-                '#${pokemon.id.toString().padLeft(3, '0')}',
-                style: TextStyle(
-                  color: isDark ? Colors.blue[200] : Colors.blue[400],
-                ),
+              Row(
+                children: [
+                  Text(
+                    '#${pokemon.id.toString().padLeft(3, '0')}',
+                    style: TextStyle(
+                      color: isDark ? Colors.blue[200] : Colors.blue[400],
+                    ),
+                  ),
+                  const Spacer(),
+                  // Small heart, tap it to add/remove from favorites.
+                  IconButton(
+                    onPressed: () => ref
+                        .read(favoritesProvider.notifier)
+                        .toggleFavorite(pokemon),
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: Colors.red,
+                    ),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: isFavorite
+                        ? 'Remove from favorites'
+                        : 'Add to favorites',
+                  ),
+                ],
               ),
               // Image takes the leftover space so the card never overflows.
               Expanded(
@@ -48,9 +87,9 @@ class PokemonCard extends StatelessWidget {
                       const Icon(Icons.broken_image, size: 40),
                 ),
               ),
+              // Original name is always shown.
               Text(
-                // Capitalize the first letter.
-                pokemon.name[0].toUpperCase() + pokemon.name.substring(1),
+                pokemon.displayName,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.blue[900],
@@ -58,6 +97,18 @@ class PokemonCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              // Nickname is shown under it if there is one.
+              if (nickname != null)
+                Text(
+                  '"$nickname"',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: isDark ? Colors.blue[200] : Colors.blue[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
