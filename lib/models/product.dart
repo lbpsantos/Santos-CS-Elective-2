@@ -1,91 +1,66 @@
+// A book sold in the shop. Each book is one row in the Supabase `products`
+// table (see supabase/products.sql).
 class Product {
-  final String id;
+  // null for a new book that is not saved in Supabase yet.
+  // Supabase gives the book its id when it is added.
+  final int? id;
   final String name;
   final String author;
   final double price;
   final String description;
+  // A web link (https://...), an asset path (lib/assets/...), or empty for
+  // no cover.
   final String imageUrl;
+  // The id of the book's genre in the `genres` table (null = no genre).
+  final int? genreId;
+  // The genre's name, read from the `genres` table. Empty = no genre.
   final String genre;
+  // 0 means the book has no rating yet.
   final double rating;
 
   const Product({
-    required this.id,
+    this.id,
     required this.name,
     required this.author,
     required this.price,
-    required this.description,
-    required this.imageUrl,
-    this.genre = 'Fantasy',
-    this.rating = 4.8,
+    this.description = '',
+    this.imageUrl = '',
+    this.genreId,
+    this.genre = '',
+    this.rating = 0,
   });
-}
 
-// Book Catalog
-const List<Product> sampleProducts = [
-  Product(
-    id: 'hp1',
-    name: "Harry Potter and the Philosopher's Stone",
-    author: 'J.K. Rowling',
-    price: 499.00,
-    description:
-        'Harry Potter has never even heard of Hogwarts when the letters start dropping on the doormat at number four, Privet Drive. On his eleventh birthday, he discovers he is a wizard and begins his magical journey.',
-    imageUrl: 'lib/assets/9781408855652.webp',
-    genre: 'Fantasy / Magic',
-    rating: 4.8,
-  ),
-  Product(
-    id: 'hp2',
-    name: 'Harry Potter and the Chamber of Secrets',
-    author: 'J.K. Rowling',
-    price: 529.00,
-    description:
-        'The plot follows Harry\'s second year at Hogwarts School of Witchcraft and Wizardry, during which a series of messages on the walls of the school\'s corridors warn that the "Chamber of Secrets" has been opened.',
-    imageUrl: 'lib/assets/harry-potter-and-the-chamber-of-secrets.jpeg',
-    genre: 'Fantasy / Magic',
-    rating: 4.7,
-  ),
-  Product(
-    id: 'hp4',
-    name: 'Harry Potter and the Goblet of Fire',
-    author: 'J.K. Rowling',
-    price: 599.00,
-    description:
-        'Harry Potter is midway through his training as a wizard and his coming of age. The Triwizard Tournament is to be held at Hogwarts, and Harry finds his name mysteriously drawn from the Goblet of Fire.',
-    imageUrl: 'lib/assets/images.jfif',
-    genre: 'Fantasy / Adventure',
-    rating: 4.9,
-  ),
-  Product(
-    id: 'hp7',
-    name: 'Harry Potter and the Deathly Hallows',
-    author: 'J.K. Rowling',
-    price: 649.00,
-    description:
-        'The climactic seventh and final novel of the Harry Potter series. Harry, Ron, and Hermione leave Hogwarts to track down and destroy Lord Voldemort\'s remaining Horcruxes.',
-    imageUrl: 'lib/assets/images (1).jfif',
-    genre: 'Fantasy / Epic',
-    rating: 4.9,
-  ),
-  Product(
-    id: 'pj1',
-    name: 'The Lightning Thief',
-    author: 'Rick Riordan',
-    price: 450.00,
-    description:
-        'Percy Jackson is a good kid, but he can\'t seem to focus on his schoolwork or control his temper. When his mom tells him the truth about who he is—a demigod son of Poseidon—his world changes forever.',
-    imageUrl: 'lib/assets/images (2).jfif',
-    genre: 'Mythology / Adventure',
-    rating: 4.8,
-  ),
-  Product(
-    id: 'pj2',
-    name: 'The Sea of Monsters',
-    author: 'Rick Riordan',
-    price: 450.00,
-    description:
-        'Percy Jackson\'s seventh-grade year has been quiet until a game of dodgeball turns into a death match against giants. To save Camp Half-Blood, Percy and his friends must sail into the Sea of Monsters.',
-    imageUrl: 'lib/assets/images (3).jfif',
-    genre: 'Mythology / Adventure',
-    rating: 4.7,
-  ),
-];
+  // Makes a Product from a row that Supabase sent back.
+  // The row looks like {..., 'genre_id': 5, 'genres': {'name': 'Magic'}},
+  // because ProductService asks for the genre's name with the book.
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final genreRow = json['genres'] as Map<String, dynamic>?;
+    return Product(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      author: json['author'] as String,
+      // Numbers can come back as an int (499) or a double (499.5).
+      price: (json['price'] as num).toDouble(),
+      description: json['description'] as String? ?? '',
+      imageUrl: json['image_url'] as String? ?? '',
+      genreId: json['genre_id'] as int?,
+      genre: genreRow?['name'] as String? ?? '',
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  // The columns sent to Supabase when a book is added or edited.
+  // id and created_at are left out because Supabase fills them in, and the
+  // genre is saved by its id (the name stays in the genres table).
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'author': author,
+      'price': price,
+      'description': description,
+      'image_url': imageUrl.isEmpty ? null : imageUrl,
+      'genre_id': genreId,
+      'rating': rating,
+    };
+  }
+}

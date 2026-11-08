@@ -4,11 +4,12 @@ import '../models/product.dart';
 import '../widgets/product_card.dart';
 
 class TabletScaffold extends StatelessWidget {
+  // The books on the current page (from Supabase)
   final List<Product> products;
 
   const TabletScaffold({
     super.key,
-    this.products = sampleProducts,
+    required this.products,
   });
 
   @override
@@ -27,7 +28,10 @@ class TabletScaffold extends StatelessWidget {
 
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      physics: const BouncingScrollPhysics(),
+      // The home screen scrolls everything together (search, filters and
+      // books), so the grid itself doesn't scroll. One page is only 6 books.
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3, // 3 columns on tablet screens
         crossAxisSpacing: 18,

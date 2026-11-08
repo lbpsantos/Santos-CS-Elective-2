@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/cart.dart';
 import '../models/product.dart';
+import '../widgets/delete_product_dialog.dart';
+import '../widgets/product_cover.dart';
+import '../widgets/product_form_sheet.dart';
 
 // ProductDetailScreen manages local quantity selection state with standard setState()
-class ProductDetailScreen extends StatefulWidget {
+// The Edit and Delete buttons in the app bar change the book in Supabase.
+class ProductDetailScreen extends ConsumerStatefulWidget {
   final Product product;
 
   const ProductDetailScreen({
@@ -13,12 +18,36 @@ class ProductDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+  ConsumerState<ProductDetailScreen> createState() =>
+      _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
+class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   // Local state for quantity counter
   int _quantity = 1;
+
+  // The book shown on this screen. Replaced with the saved version after an
+  // edit, so the new details show right away.
+  late Product _product = widget.product;
+
+  Future<void> _editBook() async {
+    final saved = await showProductForm(context, product: _product);
+    if (saved != null && mounted) {
+      setState(() => _product = saved);
+    }
+  }
+
+  Future<void> _deleteBook() async {
+    final deleted = await confirmAndDeleteProduct(context, ref, _product);
+    // The book is gone, so go back to the shop.
+    if (deleted && mounted) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/');
+      }
+    }
+  }
 
   void _incrementQuantity() {
     setState(() {
@@ -36,7 +65,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   void _handleAddToCart() {
     // Add to standard in-memory cart list
-    addToCart(widget.product, _quantity);
+    addToCart(_product, _quantity);
 
     // Refresh local state and show confirmation
     setState(() {});
@@ -45,7 +74,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Added $_quantity ${widget.product.name} to Cart!',
+          'Added $_quantity ${_product.name} to Cart!',
         ),
         action: SnackBarAction(
           label: 'View Cart',
@@ -59,13 +88,37 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final book = widget.product;
+    final book = _product;
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Book Details'),
         actions: [
+          // ⋮ menu with Edit and Delete (same as on the book cards)
+          PopupMenuButton<String>(
+            tooltip: 'Edit or delete',
+            onSelected: (choice) =>
+                choice == 'edit' ? _editBook() : _deleteBook(),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline),
+                  title: Text('Delete'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
           // Cart button with live item count badge
           Stack(
             alignment: Alignment.center,
@@ -132,14 +185,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      book.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: theme.colorScheme.surfaceContainer,
-                        child: const Icon(Icons.menu_book, size: 64),
-                      ),
-                    ),
+                    child: ProductCover(imageUrl: book.imageUrl, iconSize: 64),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -173,14 +219,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     _buildInfoBadge(
                       icon: Icons.star,
                       iconColor: Colors.amber,
-                      label: '${book.rating}',
+                      label: book.rating > 0 ? '${book.rating}' : 'New',
                       subtitle: 'Rating',
                       theme: theme,
                     ),
                     _buildInfoBadge(
                       icon: Icons.auto_stories,
                       iconColor: theme.colorScheme.primary,
-                      label: book.genre.split('/').first.trim(),
+                      label: book.genre.isEmpty
+                          ? 'None'
+                          : book.genre.split('/').first.trim(),
                       subtitle: 'Genre',
                       theme: theme,
                     ),

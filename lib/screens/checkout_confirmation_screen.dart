@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/cart.dart';
+import '../widgets/product_cover.dart';
 
 // Checkout Confirmation Screen displaying an itemized order receipt
 class CheckoutConfirmationScreen extends StatelessWidget {
@@ -160,13 +161,13 @@ class CheckoutConfirmationScreen extends StatelessWidget {
                               // Cover thumbnail
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
-                                child: Image.asset(
-                                  item.product.imageUrl,
+                                child: SizedBox(
                                   width: 40,
                                   height: 56,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      const Icon(Icons.menu_book),
+                                  child: ProductCover(
+                                    imageUrl: item.product.imageUrl,
+                                    iconSize: 20,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),

@@ -34,8 +34,19 @@ void addToCart(Product product, int quantity) {
   }
 }
 
+// Use the new details (title, price, ...) after a book is edited
+void updateCartProduct(Product product) {
+  final index = cartItems.indexWhere((item) => item.product.id == product.id);
+  if (index >= 0) {
+    cartItems[index] = CartItem(
+      product: product,
+      quantity: cartItems[index].quantity,
+    );
+  }
+}
+
 // Increase quantity of a book
-void incrementCartItem(String productId) {
+void incrementCartItem(int? productId) {
   final index = cartItems.indexWhere((item) => item.product.id == productId);
   if (index >= 0) {
     cartItems[index].quantity++;
@@ -43,7 +54,7 @@ void incrementCartItem(String productId) {
 }
 
 // Decrease quantity or remove if it hits 0
-void decrementCartItem(String productId) {
+void decrementCartItem(int? productId) {
   final index = cartItems.indexWhere((item) => item.product.id == productId);
   if (index >= 0) {
     if (cartItems[index].quantity > 1) {
@@ -55,7 +66,7 @@ void decrementCartItem(String productId) {
 }
 
 // Remove an item completely
-void removeCartItem(String productId) {
+void removeCartItem(int? productId) {
   cartItems.removeWhere((item) => item.product.id == productId);
 }
 

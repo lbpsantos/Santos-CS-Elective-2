@@ -24,10 +24,12 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.productDetail,
-      builder: (context, state) {
-        final product = state.extra as Product? ?? sampleProducts.first;
-        return ProductDetailScreen(product: product);
-      },
+      // The book is passed in `extra`. It is missing when the page is opened
+      // directly (e.g. reloading /details on the web), so go back home.
+      redirect: (context, state) =>
+          state.extra is Product ? null : AppRoutes.home,
+      builder: (context, state) =>
+          ProductDetailScreen(product: state.extra! as Product),
     ),
     GoRoute(
       path: AppRoutes.cart,

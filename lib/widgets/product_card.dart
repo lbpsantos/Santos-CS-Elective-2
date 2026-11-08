@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/product.dart';
+import 'delete_product_dialog.dart';
+import 'product_cover.dart';
+import 'product_form_sheet.dart';
 
 // Displays an individual eBook in the modern card style (StatelessWidget for static display)
+// The ⋮ menu on the card is used to edit or delete the book.
 class ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
@@ -30,56 +35,59 @@ class ProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top rating tag
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star, size: 12, color: Colors.amber),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${product.rating}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber,
-                      ),
+              // Top row: rating tag and the edit / delete menu
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star, size: 12, color: Colors.amber),
+                        const SizedBox(width: 3),
+                        Text(
+                          // Books added without a rating show "New"
+                          product.rating > 0 ? '${product.rating}' : 'New',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  _ProductMenu(product: product),
+                ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
 
               // Book Cover Image with realistic 3D book shadow
               Expanded(
                 child: Center(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.18),
-                          blurRadius: 8,
-                          offset: const Offset(2, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        product.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 80,
-                          color: theme.colorScheme.surfaceContainer,
-                          child: const Icon(Icons.menu_book, size: 36),
-                        ),
+                  child: AspectRatio(
+                    // Every cover has the shape of a book
+                    aspectRatio: 2 / 3,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.18),
+                            blurRadius: 8,
+                            offset: const Offset(2, 4),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: ProductCover(imageUrl: product.imageUrl),
                       ),
                     ),
                   ),
@@ -148,6 +156,55 @@ class ProductCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+enum _MenuChoice { edit, delete }
+
+// The ⋮ button on a card, with Edit and Delete.
+class _ProductMenu extends ConsumerWidget {
+  const _ProductMenu({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: PopupMenuButton<_MenuChoice>(
+        tooltip: 'Edit or delete',
+        padding: EdgeInsets.zero,
+        iconSize: 20,
+        icon: const Icon(Icons.more_vert),
+        onSelected: (choice) {
+          switch (choice) {
+            case _MenuChoice.edit:
+              showProductForm(context, product: product);
+            case _MenuChoice.delete:
+              confirmAndDeleteProduct(context, ref, product);
+          }
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _MenuChoice.edit,
+            child: ListTile(
+              leading: Icon(Icons.edit_outlined),
+              title: Text('Edit'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          PopupMenuItem(
+            value: _MenuChoice.delete,
+            child: ListTile(
+              leading: Icon(Icons.delete_outline),
+              title: Text('Delete'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
       ),
     );
   }

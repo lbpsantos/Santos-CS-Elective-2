@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../models/cart.dart';
+import '../widgets/product_cover.dart';
 
 // CartScreen manages user interactions (increment, decrement, remove) using pure setState()
 class CartScreen extends StatefulWidget {
@@ -11,19 +12,19 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  void _increment(String id) {
+  void _increment(int? id) {
     setState(() {
       incrementCartItem(id);
     });
   }
 
-  void _decrement(String id) {
+  void _decrement(int? id) {
     setState(() {
       decrementCartItem(id);
     });
   }
 
-  void _remove(String id) {
+  void _remove(int? id) {
     setState(() {
       removeCartItem(id);
     });
@@ -168,12 +169,9 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: Image.asset(
-                                    book.imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.menu_book,
-                                    ),
+                                  child: ProductCover(
+                                    imageUrl: book.imageUrl,
+                                    iconSize: 24,
                                   ),
                                 ),
                               ),
