@@ -24,11 +24,14 @@ Future<void> main() async {
 }
 
 // entry of the app
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The router sends logged-out users to the login page.
+    final appRouter = ref.watch(routerProvider);
+
     // theme toggle (Light / Dark mode)
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
@@ -40,7 +43,7 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: currentThemeMode,
-          //  loads homescreen
+          //  loads the login page or the homescreen
           routerConfig: appRouter,
         );
       },

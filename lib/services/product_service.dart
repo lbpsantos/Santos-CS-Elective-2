@@ -230,8 +230,8 @@ String friendlyErrorMessage(Object error) {
         return 'The products table is not linked to the genres table yet. '
             'Run supabase/products.sql in the Supabase SQL Editor.';
       case '42501':
-        return 'Supabase blocked this. Check the policies on the "products" '
-            'table (see supabase/products.sql).';
+        return 'Supabase blocked this. Only logged-in users can change books; '
+            'try logging out and in again (see supabase/auth.sql).';
     }
     return error.message;
   }

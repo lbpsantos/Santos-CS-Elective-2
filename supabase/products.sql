@@ -7,6 +7,10 @@
 -- It is safe to run more than once: nothing is created twice. It also
 -- updates a products table made by the first version of this file (which
 -- stored the genre as text) so it uses the genres table instead.
+--
+-- If you run this file again after supabase/auth.sql, run auth.sql again
+-- too (this file lets anyone change books; auth.sql limits that to
+-- logged-in users).
 -- =====================================================================
 
 

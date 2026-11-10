@@ -3,15 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_first_flutter_ui/main.dart';
 import 'package:my_first_flutter_ui/models/cart.dart';
+import 'package:my_first_flutter_ui/providers/auth_provider.dart';
 import 'package:my_first_flutter_ui/providers/products_provider.dart';
 import 'package:my_first_flutter_ui/responsive/tablet_scaffold.dart';
-import 'package:my_first_flutter_ui/routing/app_router.dart';
 import 'package:my_first_flutter_ui/widgets/product_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
+import 'fake_auth_service.dart';
 import 'fake_product_service.dart';
 
 // Tests that use the real screens, with fake books instead of Supabase.
+// The user is already logged in (the login pages are tested in auth_test).
 void main() {
   // A phone-sized screen (360 x 800), so the 2-column layout is used.
   void usePhoneScreen(WidgetTester tester) {
@@ -25,11 +27,13 @@ void main() {
     FakeProductService? service,
   }) async {
     clearCart();
-    appRouter.go('/');
     final fakeService = service ?? FakeProductService(sampleBooks(20));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [productServiceProvider.overrideWithValue(fakeService)],
+        overrides: [
+          productServiceProvider.overrideWithValue(fakeService),
+          authServiceProvider.overrideWithValue(FakeAuthService(fakeSession())),
+        ],
         child: const MyApp(),
       ),
     );

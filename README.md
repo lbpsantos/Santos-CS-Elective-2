@@ -46,10 +46,55 @@ A book shop app built with Flutter, Supabase and Riverpod.
    `products` tables, lets the app read them (and change the products), and
    adds 7 genres and 20 sample books (4 pages). Running it again does not
    duplicate anything. Add or rename genres in the Table Editor.
-4. `flutter run`
+4. Set up authentication (next section), then run the app on a fixed port so
+   the GitHub login can come back to it:
+   `flutter run -d chrome --web-port 3000`
 
 Run the tests with `flutter test`. They use a fake Supabase, so they work
 without a database.
+
+## Authentication activity
+
+- **Log in / Register pages** with email and password (Supabase Auth).
+- **3rd-party provider: GitHub** ("Continue with GitHub").
+- **Route guard:** logged-out users only see the login and register pages.
+- **Sessions and tokens:** logging in gives the app a session with a
+  short-lived access token (sent with every request) and a refresh token
+  (used to get a new access token). supabase_flutter saves the session on the
+  device and refreshes the access token by itself, so users stay logged in.
+  The tokens are never shown on screen.
+- **My Account page** (tap your picture on the home screen): name, email,
+  login method (email or GitHub) and Sign Out.
+- **Database policies:** `supabase/auth.sql` only lets logged-in users
+  (requests with an access token) add, edit and delete books.
+
+| File | What it does |
+| --- | --- |
+| `lib/services/auth_service.dart` | All Supabase Auth calls |
+| `lib/providers/auth_provider.dart` | The current session (null = logged out) |
+| `lib/routing/app_router.dart` | Sends logged-out users to the login page |
+| `lib/screens/login_screen.dart`, `register_screen.dart` | Log in / register |
+| `lib/screens/account_screen.dart` | Profile and sign out |
+| `supabase/auth.sql` | Only logged-in users can change books |
+
+### Setup in the Supabase Dashboard
+
+1. **SQL Editor:** run `supabase/auth.sql` (after `products.sql`).
+2. **Authentication -> URL Configuration:**
+   - Site URL: `http://localhost:3000`
+   - Redirect URLs: add `http://localhost:3000/**` and
+     `io.supabase.shopapp://login-callback/` (Android).
+3. **GitHub OAuth app:** on GitHub go to **Settings -> Developer settings ->
+   OAuth Apps -> New OAuth App**:
+   - Homepage URL: `http://localhost:3000`
+   - Authorization callback URL: the **Callback URL** shown on Supabase's
+     GitHub provider page (`https://<project-ref>.supabase.co/auth/v1/callback`)
+   - Copy the **Client ID**, then **Generate a new client secret**.
+4. **Authentication -> Sign In / Providers -> GitHub:** turn it on, paste the
+   Client ID and Client Secret, and save.
+5. Optional for testing: **Sign In / Providers -> Email -> Confirm email**.
+   When it is on, new accounts must click the link in the email before they
+   can log in (Supabase's built-in email only sends a few emails per hour).
 
 ## Getting Started
 

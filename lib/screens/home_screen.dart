@@ -7,12 +7,15 @@ import '../models/cart.dart';
 import '../models/product.dart';
 import '../models/product_filter.dart';
 import '../models/product_page.dart';
+import '../providers/auth_provider.dart';
 import '../providers/filter_provider.dart';
 import '../providers/pagination_provider.dart';
 import '../providers/products_provider.dart';
 import '../responsive/mobile_scaffold.dart';
 import '../responsive/responsive_layout.dart';
 import '../responsive/tablet_scaffold.dart';
+import '../routing/app_router.dart';
+import '../services/auth_service.dart';
 import '../services/product_service.dart';
 import '../theme/app_them.dart';
 import '../widgets/genre_filter.dart';
@@ -182,17 +185,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
+    // The logged-in user (from the session in sessionProvider)
+    final user = ref.watch(sessionProvider)?.user;
+    final firstName = user == null
+        ? 'Reader'
+        : displayNameOf(user).split(' ').first;
+    final avatarUrl = user == null ? null : avatarUrlOf(user);
+
     return AppBar(
       titleSpacing: 16,
       title: Row(
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-            child: Icon(
-              Icons.person,
-              size: 20,
-              color: theme.colorScheme.primary,
+          // Tap the picture to open My Account (session info, sign out)
+          Tooltip(
+            message: 'My Account',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => context.push(AppRoutes.account),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: theme.colorScheme.primary.withValues(
+                  alpha: 0.2,
+                ),
+                foregroundImage: avatarUrl == null
+                    ? null
+                    : NetworkImage(avatarUrl),
+                child: Icon(
+                  Icons.person,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -202,7 +225,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Hello, Reader',
+                  'Hello, $firstName',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
