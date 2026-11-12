@@ -7,7 +7,7 @@ import '../routing/app_router.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_widgets.dart';
 
-// The login page: email + password, or GitHub.
+// The login page: email + password, or Google.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -36,11 +36,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _loading = true;
       _error = null;
     });
-    ref.read(authErrorProvider.notifier).clear();
-
     try {
       await ref
-          .read(authServiceProvider)
+          .read(authActionsProvider)
           .signIn(email: _email.text.trim(), password: _password.text);
       // Nothing else to do: the new session makes the router open the shop.
     } catch (error) {
@@ -52,9 +50,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // An error from the GitHub login (it happens outside this page).
-    final githubError = ref.watch(authErrorProvider);
-    final error = _error ?? githubError;
+    // An error from the Google login (it happens outside this page).
+    final oauthError = ref.watch(authErrorProvider);
+    final error = _error ?? oauthError;
 
     return Scaffold(
       body: SafeArea(
@@ -142,7 +140,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     const OrDivider(),
-                    const GitHubSignInButton(),
+                    const GoogleSignInButton(),
                     const SizedBox(height: 20),
                     Wrap(
                       alignment: WrapAlignment.center,

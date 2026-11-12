@@ -1,380 +1,350 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../models/cart.dart';
-import '../widgets/product_cover.dart';
 
-// CartScreen manages user interactions (increment, decrement, remove) using pure setState()
-class CartScreen extends StatefulWidget {
+import '../models/cart.dart';
+import '../providers/cart_provider.dart';
+import '../providers/order_provider.dart';
+import '../routing/app_router.dart';
+import '../services/product_service.dart';
+import '../widgets/product_cover.dart';
+import '../widgets/state_views.dart';
+
+// The shopping cart (customers only): change quantities, remove books, see
+// the running total, and check out.
+class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
   @override
-  State<CartScreen> createState() => _CartScreenState();
+  ConsumerState<CartScreen> createState() => _CartScreenState();
 }
 
-class _CartScreenState extends State<CartScreen> {
-  void _increment(int? id) {
-    setState(() {
-      incrementCartItem(id);
-    });
+class _CartScreenState extends ConsumerState<CartScreen> {
+  bool _placingOrder = false;
+
+  CartNotifier get _cart => ref.read(cartProvider.notifier);
+
+  // Runs a cart change and shows the reason if it is not allowed
+  // (e.g. more copies than the stock).
+  void _change(void Function() action) {
+    try {
+      action();
+    } on CartException catch (error) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
-  void _decrement(int? id) {
-    setState(() {
-      decrementCartItem(id);
-    });
-  }
-
-  void _remove(int? id) {
-    setState(() {
-      removeCartItem(id);
-    });
-  }
-
-  void _clearAll() {
-    showDialog(
+  Future<void> _clearAll() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Clear Cart?'),
-        content: const Text(
-          'Are you sure you want to remove all books from your cart?',
-        ),
+        content: const Text('Remove all books from your cart?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              setState(() {
-                clearCart();
-              });
-              Navigator.pop(ctx);
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Clear'),
           ),
         ],
       ),
     );
+    if (confirmed == true) _cart.clear();
+  }
+
+  // Saves the order in Supabase, then opens the confirmation page.
+  Future<void> _checkout() async {
+    setState(() => _placingOrder = true);
+    try {
+      final order = await ref.read(orderActionsProvider).checkout();
+      if (!mounted) return;
+      // Replace the cart page, so Back goes to the shop.
+      context.pushReplacement(AppRoutes.checkout, extra: order);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _placingOrder = false);
+      final message = error is CartException
+          ? error.message
+          : friendlyErrorMessage(error);
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.error_outline, size: 36),
+          title: const Text('Order not placed'),
+          content: Text(
+            '$message\n\nNothing was saved and your cart was not changed.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final items = ref.watch(cartProvider);
+    final count = ref.watch(cartCountProvider);
+    final total = ref.watch(cartTotalProvider);
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final isEmpty = cartItems.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Shopping Cart'),
         actions: [
-          if (!isEmpty)
+          if (items.isNotEmpty && !_placingOrder)
             IconButton(
               tooltip: 'Clear Cart',
-              icon: const Icon(Icons.delete_outline),
+              icon: const Icon(Icons.remove_shopping_cart_outlined),
               onPressed: _clearAll,
             ),
         ],
       ),
-      body: isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.shopping_bag_outlined,
-                        size: 64,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Your cart is empty',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Browse our collection of magical books and start your reading journey!',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                      ),
-                      onPressed: () => context.go('/'),
-                      icon: const Icon(Icons.menu_book),
-                      label: const Text('Discover Books'),
-                    ),
-                  ],
-                ),
-              ),
+      body: items.isEmpty
+          ? MessageView(
+              icon: Icons.shopping_bag_outlined,
+              title: 'Your cart is empty',
+              message: 'Browse the shop and add a book to start an order.',
+              actionLabel: 'Discover Books',
+              actionIcon: Icons.menu_book,
+              onAction: () => context.go(AppRoutes.home),
             )
           : Column(
               children: [
-                // List of items in cart
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: cartItems.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final item = cartItems[index];
-                      final book = item.product;
-
-                      return Card(
-                        elevation: 1,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // Book Cover Thumbnail
-                              Container(
-                                width: 55,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 4,
-                                      offset: const Offset(1, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: ProductCover(
-                                    imageUrl: book.imageUrl,
-                                    iconSize: 24,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-
-                              // Book Info
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      book.name,
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      book.author,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme
-                                            .colorScheme.onSurfaceVariant,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      '₱${book.price.toStringAsFixed(2)} each',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: theme.colorScheme.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // Quantity Stepper & Line Subtotal
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  // Subtotal for this book
-                                  Text(
-                                    '₱${item.subtotal.toStringAsFixed(2)}',
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Quantity stepper pill
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? const Color(0xFF1F1B18)
-                                          : const Color(0xFFF3EFE9),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          iconSize: 16,
-                                          padding: const EdgeInsets.all(4),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 28,
-                                            minHeight: 28,
-                                          ),
-                                          onPressed: () => _decrement(book.id),
-                                          icon: const Icon(Icons.remove),
-                                          tooltip: 'Decrease quantity',
-                                        ),
-                                        Text(
-                                          '${item.quantity}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        IconButton(
-                                          iconSize: 16,
-                                          padding: const EdgeInsets.all(4),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 28,
-                                            minHeight: 28,
-                                          ),
-                                          onPressed: () => _increment(book.id),
-                                          icon: const Icon(Icons.add),
-                                          tooltip: 'Increase quantity',
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) =>
+                        _buildItem(theme, items[index]),
                   ),
                 ),
+                _buildSummary(theme, count, total),
+              ],
+            ),
+    );
+  }
 
-                // Order Summary Card at bottom
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF241E1A)
-                        : const Color(0xFFF3ECE1),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(24),
-                      topRight: Radius.circular(24),
+  Widget _buildItem(ThemeData theme, CartItem item) {
+    final book = item.product;
+    final atStockLimit = item.quantity >= book.stock;
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 55,
+                height: 80,
+                child: ProductCover(imageUrl: book.imageUrl, iconSize: 24),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    book.name,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 10,
-                        offset: const Offset(0, -3),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '₱${book.price.toStringAsFixed(2)} each',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    atStockLimit
+                        ? 'Max ${book.stock} (all in stock)'
+                        : '${book.stock} in stock',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: atStockLimit
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '₱${item.subtotal.toStringAsFixed(2)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: _placingOrder
+                          ? null
+                          : () => _cart.remove(book.id),
+                    ),
+                  ],
+                ),
+                // Quantity stepper
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        iconSize: 16,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: 'Decrease quantity',
+                        onPressed: _placingOrder
+                            ? null
+                            : () => _change(() => _cart.decrement(book.id)),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(
+                        '${item.quantity}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        iconSize: 16,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: 'Increase quantity',
+                        // Can't go above the stock.
+                        onPressed: _placingOrder || atStockLimit
+                            ? null
+                            : () => _change(() => _cart.increment(book.id)),
+                        icon: const Icon(Icons.add),
                       ),
                     ],
-                  ),
-                  child: SafeArea(
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total Items:',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                            Text(
-                              '$totalCartCount books',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                'Grand Total:',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '₱${totalCartPrice.toStringAsFixed(2)}',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Proceed to Checkout button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(26),
-                              ),
-                            ),
-                            onPressed: isEmpty
-                                ? null
-                                : () => context.push('/checkout').then((_) {
-                                      setState(() {});
-                                    }),
-                            icon: const Icon(Icons.lock_outline),
-                            label: const Text(
-                              'Proceed to Checkout',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummary(ThemeData theme, int count, double total) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Items'),
+                Text(
+                  '$count ${count == 1 ? 'book' : 'books'}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '₱${total.toStringAsFixed(2)}',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Prices and stock are checked again when you check out.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                ),
+                onPressed: _placingOrder ? null : _checkout,
+                icon: _placingOrder
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.lock_outline),
+                label: Text(
+                  _placingOrder ? 'Placing order...' : 'Checkout',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

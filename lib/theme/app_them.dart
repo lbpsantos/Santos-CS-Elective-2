@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-// Global theme mode notifier for instant app-wide theme switching
-final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier<ThemeMode>(
-  ThemeMode.light,
-);
-
+// The book shop's look: warm paper and honey colors with rounded shapes,
+// applied to every screen. Light and dark mode share the same seed color.
+// Which mode is on lives in themeModeProvider.
 class AppTheme {
   // Warm golden amber & honey seed color
   static const Color seedColor = Color(0xFFC58940);

@@ -1,76 +1,36 @@
 import 'product.dart';
 
-// Represents an item in the shopping cart with its quantity
+// One book in the shopping cart, with how many copies the customer wants.
+// The cart itself lives in cartProvider (lib/providers/cart_provider.dart).
 class CartItem {
+  const CartItem({required this.product, required this.quantity});
+
   final Product product;
-  int quantity;
+  final int quantity;
 
-  CartItem({
-    required this.product,
-    this.quantity = 1,
-  });
-
-  // Calculate subtotal for this item
   double get subtotal => product.price * quantity;
-}
 
-// Simple in-memory cart list (pure Dart, no external state management packages)
-final List<CartItem> cartItems = [];
-
-// Helper functions for cart calculations
-int get totalCartCount =>
-    cartItems.fold(0, (sum, item) => sum + item.quantity);
-
-double get totalCartPrice =>
-    cartItems.fold(0.0, (sum, item) => sum + item.subtotal);
-
-// Add book to cart or increase quantity if already present
-void addToCart(Product product, int quantity) {
-  final index = cartItems.indexWhere((item) => item.product.id == product.id);
-  if (index >= 0) {
-    cartItems[index].quantity += quantity;
-  } else {
-    cartItems.add(CartItem(product: product, quantity: quantity));
-  }
-}
-
-// Use the new details (title, price, ...) after a book is edited
-void updateCartProduct(Product product) {
-  final index = cartItems.indexWhere((item) => item.product.id == product.id);
-  if (index >= 0) {
-    cartItems[index] = CartItem(
-      product: product,
-      quantity: cartItems[index].quantity,
+  CartItem copyWith({Product? product, int? quantity}) {
+    return CartItem(
+      product: product ?? this.product,
+      quantity: quantity ?? this.quantity,
     );
   }
-}
 
-// Increase quantity of a book
-void incrementCartItem(int? productId) {
-  final index = cartItems.indexWhere((item) => item.product.id == productId);
-  if (index >= 0) {
-    cartItems[index].quantity++;
+  // What place_order() in Supabase needs: only the id and the quantity.
+  // The price and the name are looked up in the database at checkout.
+  Map<String, dynamic> toOrderJson() {
+    return {'product_id': product.id, 'quantity': quantity};
   }
 }
 
-// Decrease quantity or remove if it hits 0
-void decrementCartItem(int? productId) {
-  final index = cartItems.indexWhere((item) => item.product.id == productId);
-  if (index >= 0) {
-    if (cartItems[index].quantity > 1) {
-      cartItems[index].quantity--;
-    } else {
-      cartItems.removeAt(index);
-    }
-  }
-}
+// Thrown by the cart when a book is out of stock or the quantity would go
+// above the stock. The message can be shown to the customer as it is.
+class CartException implements Exception {
+  const CartException(this.message);
 
-// Remove an item completely
-void removeCartItem(int? productId) {
-  cartItems.removeWhere((item) => item.product.id == productId);
-}
+  final String message;
 
-// Clear all cart items upon checkout
-void clearCart() {
-  cartItems.clear();
+  @override
+  String toString() => message;
 }

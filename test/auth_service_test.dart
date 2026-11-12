@@ -99,21 +99,27 @@ void main() {
     expect(session.expiresAt, isNotNull); // read from the access token
   });
 
-  test('register saves the name and reports a confirmation email', () async {
+  test('register saves the names and reports a confirmation email', () async {
     // With "Confirm email" on, Supabase sends back only the user.
     final service = serviceThatReplies((request) async => jsonReply(userJson()));
 
     final loggedIn = await service.register(
       email: 'lucas@example.com',
       password: 'secret123',
-      fullName: 'Lucas Santos',
+      firstName: 'Lucas',
+      lastName: 'Santos',
     );
 
     final request = requests.single;
     expect(request.url.path, '/auth/v1/signup');
     final body = jsonDecode(request.body) as Map<String, dynamic>;
     expect(body['email'], 'lucas@example.com');
-    expect(body['data'], {'full_name': 'Lucas Santos'});
+    // The handle_new_user trigger copies these into the profiles table.
+    expect(body['data'], {
+      'firstname': 'Lucas',
+      'lastname': 'Santos',
+      'full_name': 'Lucas Santos',
+    });
     expect(loggedIn, isFalse);
     expect(service.currentSession, isNull);
   });
@@ -127,7 +133,8 @@ void main() {
       service.register(
         email: 'lucas@example.com',
         password: 'secret123',
-        fullName: 'Lucas Santos',
+        firstName: 'Lucas',
+        lastName: 'Santos',
       ),
       throwsA(
         isA<AuthException>().having(
@@ -137,6 +144,34 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('the login method is the most recently used one', () {
+    UserIdentity identity(String provider, String lastSignInAt) =>
+        UserIdentity(
+          id: provider,
+          userId: 'user-123',
+          identityData: const {},
+          identityId: provider,
+          provider: provider,
+          createdAt: '2026-11-10T00:00:00Z',
+          lastSignInAt: lastSignInAt,
+        );
+    // Made with GitHub, then logged in with Google using the same email
+    final user = User(
+      id: 'user-123',
+      appMetadata: const {'provider': 'github'},
+      userMetadata: const {},
+      aud: 'authenticated',
+      createdAt: '2026-11-10T00:00:00Z',
+      identities: [
+        identity('github', '2026-11-10T09:00:00Z'),
+        identity('google', '2026-11-12T15:30:00Z'),
+        identity('email', '2026-11-11T12:00:00Z'),
+      ],
+    );
+
+    expect(providerOf(user), 'google');
   });
 
   test('user details come from the session', () {

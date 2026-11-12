@@ -7,7 +7,8 @@ import '../routing/app_router.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_widgets.dart';
 
-// The register page: create an account with name, email and password.
+// The register page: create an account with first and last name, email
+// and password. Every new account starts as a customer.
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
@@ -17,7 +18,8 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
+  final _firstName = TextEditingController();
+  final _lastName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
@@ -27,7 +29,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
+    _firstName.dispose();
+    _lastName.dispose();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
@@ -40,16 +43,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _loading = true;
       _error = null;
     });
-    ref.read(authErrorProvider.notifier).clear();
-
     bool? loggedIn;
     try {
       loggedIn = await ref
-          .read(authServiceProvider)
+          .read(authActionsProvider)
           .register(
             email: _email.text.trim(),
             password: _password.text,
-            fullName: _name.text.trim(),
+            firstName: _firstName.text.trim(),
+            lastName: _lastName.text.trim(),
           );
     } catch (error) {
       if (mounted) setState(() => _error = friendlyAuthMessage(error));
@@ -85,8 +87,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final githubError = ref.watch(authErrorProvider);
-    final error = _error ?? githubError;
+    final oauthError = ref.watch(authErrorProvider);
+    final error = _error ?? oauthError;
 
     return Scaffold(
       body: SafeArea(
@@ -105,19 +107,44 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       subtitle: 'Join the book shop and start reading.',
                     ),
                     const SizedBox(height: 28),
-                    TextFormField(
-                      controller: _name,
-                      enabled: !_loading,
-                      textInputAction: TextInputAction.next,
-                      textCapitalization: TextCapitalization.words,
-                      autofillHints: const [AutofillHints.name],
-                      decoration: const InputDecoration(
-                        labelText: 'Full name',
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                      validator: (text) => text == null || text.trim().isEmpty
-                          ? 'Enter your name'
-                          : null,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _firstName,
+                            enabled: !_loading,
+                            textInputAction: TextInputAction.next,
+                            textCapitalization: TextCapitalization.words,
+                            autofillHints: const [AutofillHints.givenName],
+                            decoration: const InputDecoration(
+                              labelText: 'First name',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                            validator: (text) =>
+                                text == null || text.trim().isEmpty
+                                ? 'Enter your first name'
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _lastName,
+                            enabled: !_loading,
+                            textInputAction: TextInputAction.next,
+                            textCapitalization: TextCapitalization.words,
+                            autofillHints: const [AutofillHints.familyName],
+                            decoration: const InputDecoration(
+                              labelText: 'Last name',
+                            ),
+                            validator: (text) =>
+                                text == null || text.trim().isEmpty
+                                ? 'Enter your last name'
+                                : null,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -205,7 +232,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ),
                     ),
                     const OrDivider(),
-                    const GitHubSignInButton(),
+                    const GoogleSignInButton(),
                     const SizedBox(height: 20),
                     Wrap(
                       alignment: WrapAlignment.center,

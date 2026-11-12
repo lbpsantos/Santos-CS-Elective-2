@@ -1,3 +1,7 @@
+-- !!! REPLACED BY supabase/final_project.sql !!!
+-- Do NOT run this file after final_project.sql: it would let every
+-- logged-in user (customers too) change the books again.
+--
 -- =====================================================================
 -- Shop App: only logged-in users may add, edit or delete books
 -- (Authentication activity)

@@ -8,6 +8,8 @@ import '../models/product_filter.dart';
 import '../models/product_page.dart';
 
 // All the Supabase queries for the `products` and `genres` tables.
+// Reading is open to every logged-in user; adding, editing and deleting
+// only works for admins (the RLS policies in supabase/final_project.sql).
 class ProductService {
   ProductService(this._supabase);
 
@@ -27,6 +29,48 @@ class ProductService {
         .select('id, name')
         .order('name', ascending: true);
     return rows.map(Genre.fromJson).toList();
+  }
+
+  // Admins only (RLS): add a genre and return it with its new id.
+  Future<Genre> addGenre(String name) async {
+    final row = await _supabase
+        .from('genres')
+        .insert({'name': name})
+        .select('id, name')
+        .single();
+    return Genre.fromJson(row);
+  }
+
+  // Admins only (RLS): rename a genre.
+  Future<Genre> renameGenre(int id, String name) async {
+    final rows = await _supabase
+        .from('genres')
+        .update({'name': name})
+        .eq('id', id)
+        .select('id, name');
+    if (rows.isEmpty) {
+      throw const ProductException(
+        'The genre was not changed. It may be gone, or only admins can '
+        'change genres.',
+      );
+    }
+    return Genre.fromJson(rows.first);
+  }
+
+  // Admins only (RLS): delete a genre. Its books keep existing, with no
+  // genre (products.genre_id is set to null).
+  Future<void> deleteGenre(int id) async {
+    final rows = await _supabase
+        .from('genres')
+        .delete()
+        .eq('id', id)
+        .select('id');
+    if (rows.isEmpty) {
+      throw const ProductException(
+        'Nothing was deleted. The genre may be gone, or only admins can '
+        'delete genres.',
+      );
+    }
   }
 
   // Gets one page of books that match the filter.
@@ -222,18 +266,27 @@ String friendlyErrorMessage(Object error) {
     switch (error.code) {
       case 'PGRST205':
       case '42P01':
-        return 'The "products" or "genres" table was not found. Run '
-            'supabase/products.sql in the Supabase SQL Editor.';
+        return 'A table was not found. Run supabase/products.sql and '
+            'supabase/final_project.sql in the Supabase SQL Editor.';
       case 'PGRST200':
       case '42703':
-        // No link from products.genre_id to genres yet (or a missing column)
-        return 'The products table is not linked to the genres table yet. '
-            'Run supabase/products.sql in the Supabase SQL Editor.';
+      case 'PGRST202':
+      case '42883':
+        // A missing link between tables, column or function
+        return 'The database is not fully set up yet. Run '
+            'supabase/final_project.sql in the Supabase SQL Editor.';
       case '42501':
-        return 'Supabase blocked this. Only logged-in users can change books; '
-            'try logging out and in again (see supabase/auth.sql).';
+        return 'Permission denied. Your account is not allowed to do this.';
+      case '23505':
+        return 'That name is already used.';
     }
     return error.message;
+  }
+  if (error is StorageException) {
+    if (error.statusCode == '403' || error.message.contains('security')) {
+      return 'Permission denied. Only admins can upload covers.';
+    }
+    return 'Could not upload the cover: ${error.message}';
   }
   return error.toString();
 }

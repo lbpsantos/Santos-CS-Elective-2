@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../models/cart.dart';
 import '../models/product.dart';
 import '../models/product_filter.dart';
 import '../models/product_page.dart';
@@ -17,14 +16,17 @@ import '../responsive/tablet_scaffold.dart';
 import '../routing/app_router.dart';
 import '../services/auth_service.dart';
 import '../services/product_service.dart';
-import '../theme/app_them.dart';
+import '../widgets/app_bar_buttons.dart';
 import '../widgets/genre_filter.dart';
 import '../widgets/pagination_bar.dart';
 import '../widgets/price_range_filter.dart';
 import '../widgets/product_cover.dart';
-import '../widgets/product_form_sheet.dart';
+import '../widgets/state_views.dart';
 
-// HomeScreen shows the shop.
+// HomeScreen shows the shop: the product list for both roles.
+// - Admins get the Add Book button and Edit / Delete on every card, plus
+//   links to the order list and the genre manager.
+// - Customers get Add to Cart on every card, the cart and their orders.
 // The search text, category, price range and page number are kept in
 // Riverpod providers (lib/providers). productsProvider watches them and loads
 // the matching page of books from Supabase whenever one of them changes.
@@ -99,12 +101,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _openDetails(Product product) {
-    // Refresh the cart badge when coming back
-    context.push('/details', extra: product).then((_) => setState(() {}));
+    context.push(AppRoutes.productDetail, extra: product);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Wait for the user's profile, which says if they are an admin.
+    final profileAsync = ref.watch(profileProvider);
+    if (profileAsync.isLoading && !profileAsync.hasValue) {
+      return const Scaffold(body: LoadingView(message: 'Loading your account...'));
+    }
+    if (profileAsync.hasError) {
+      return Scaffold(
+        appBar: AppBar(actions: [_signOutButton()]),
+        body: ErrorView(
+          title: 'Could not load your account',
+          message: friendlyErrorMessage(profileAsync.error!),
+          onRetry: () => ref.invalidate(profileProvider),
+        ),
+      );
+    }
+    if (profileAsync.value == null) {
+      return Scaffold(
+        appBar: AppBar(actions: [_signOutButton()]),
+        body: MessageView(
+          icon: Icons.person_off_outlined,
+          title: 'Profile not found',
+          message:
+              'Your account has no row in the profiles table yet. Run '
+              'supabase/final_project.sql in the Supabase SQL Editor, then '
+              'try again.',
+          isError: true,
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(profileProvider),
+        ),
+      );
+    }
+    return _buildShop(context, profileAsync.value!.isAdmin);
+  }
+
+  Widget _signOutButton() {
+    return IconButton(
+      tooltip: 'Sign Out',
+      icon: const Icon(Icons.logout),
+      onPressed: () => ref.read(authActionsProvider).signOut(),
+    );
+  }
+
+  Widget _buildShop(BuildContext context, bool isAdmin) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final filter = ref.watch(productFilterProvider);
@@ -114,12 +158,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final shownPage = productsAsync.hasError ? null : productsAsync.value;
 
     return Scaffold(
-      appBar: _buildAppBar(theme),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showProductForm(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Book'),
-      ),
+      appBar: _buildAppBar(theme, isAdmin),
+      // Admins only: opens the Add Book form.
+      floatingActionButton: isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () => context.push(AppRoutes.productForm),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Book'),
+            )
+          : null,
       // Page buttons, always visible at the bottom
       bottomNavigationBar: shownPage == null || shownPage.totalCount == 0
           ? null
@@ -171,7 +218,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 error: (error, stackTrace) => _buildError(theme, error),
                 data: (page) => page.products.isEmpty
-                    ? _buildEmpty(theme, filter)
+                    ? _buildEmpty(theme, filter, isAdmin)
                     : ResponsiveLayout(
                         mobileBody: MobileScaffold(products: page.products),
                         tabletBody: TabletScaffold(products: page.products),
@@ -184,7 +231,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(ThemeData theme) {
+  PreferredSizeWidget _buildAppBar(ThemeData theme, bool isAdmin) {
     // The logged-in user (from the session in sessionProvider)
     final user = ref.watch(sessionProvider)?.user;
     final firstName = user == null
@@ -233,7 +280,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'What would you like to read?',
+                  isAdmin ? 'Admin · manage the shop' : 'What would you like to read?',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontSize: 11,
@@ -247,63 +294,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
       actions: [
-        // Light / Dark mode toggle button
-        ValueListenableBuilder<ThemeMode>(
-          valueListenable: themeModeNotifier,
-          builder: (context, themeMode, _) {
-            final activeDark = themeMode == ThemeMode.dark;
-            return IconButton(
-              tooltip: activeDark ? 'Switch to Light' : 'Switch to Dark',
-              icon: Icon(
-                activeDark ? Icons.light_mode : Icons.dark_mode_outlined,
-              ),
-              onPressed: () {
-                themeModeNotifier.value = activeDark
-                    ? ThemeMode.light
-                    : ThemeMode.dark;
-              },
-            );
-          },
-        ),
-        // Cart action button with live item count badge
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              tooltip: 'View Cart',
-              icon: const Icon(Icons.shopping_bag_outlined),
-              onPressed: () {
-                // Refresh home screen badge when returning from cart
-                context.push('/cart').then((_) => setState(() {}));
-              },
-            ),
-            if (totalCartCount > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
-                  child: Text(
-                    '$totalCartCount',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        const ThemeToggleButton(),
+        if (isAdmin) ...[
+          IconButton(
+            tooltip: 'Manage Genres',
+            icon: const Icon(Icons.category_outlined),
+            onPressed: () => context.push(AppRoutes.adminGenres),
+          ),
+          IconButton(
+            tooltip: 'All Orders',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () => context.push(AppRoutes.adminOrders),
+          ),
+        ] else ...[
+          IconButton(
+            tooltip: 'My Orders',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () => context.push(AppRoutes.orders),
+          ),
+          const CartButton(),
+        ],
         const SizedBox(width: 8),
       ],
     );
@@ -599,7 +609,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildEmpty(ThemeData theme, ProductFilter filter) {
+  Widget _buildEmpty(ThemeData theme, ProductFilter filter, bool isAdmin) {
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Center(
@@ -619,10 +629,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              filter.isEmpty
+              !filter.isEmpty
+                  ? 'Try another search, category, genre or price range.'
+                  : isAdmin
                   ? 'Tap "Add Book" to add one, or run supabase/products.sql '
                         'to add the sample books.'
-                  : 'Try another search, category, genre or price range.',
+                  : 'The shop has no books yet. Please come back later.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

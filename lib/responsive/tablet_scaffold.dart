@@ -36,7 +36,7 @@ class TabletScaffold extends StatelessWidget {
         crossAxisCount: 3, // 3 columns on tablet screens
         crossAxisSpacing: 18,
         mainAxisSpacing: 18,
-        childAspectRatio: 0.54, // Comfortable aspect ratio for modern book cards
+        childAspectRatio: 0.5, // tall enough for the cover, text and buttons
       ),
       itemCount: products.length,
       itemBuilder: (context, index) {

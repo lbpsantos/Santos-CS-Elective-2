@@ -60,15 +60,15 @@ class FakeAuthService implements AuthService {
   final Map<String, String> accounts = {'lucas@example.com': 'secret123'};
   // Like the "Confirm email" setting in Supabase.
   bool confirmEmail = false;
-  int gitHubLogins = 0;
+  int googleLogins = 0;
 
   void _change(AuthChangeEvent event, Session? session) {
     _session = session;
     _changes.add(AuthState(event, session));
   }
 
-  // Like a GitHub login that comes back with an error.
-  void failGitHubLogin(String message) => _changes.addError(
+  // Like a Google login that comes back with an error.
+  void failGoogleLogin(String message) => _changes.addError(
     AuthException(message),
   );
 
@@ -90,7 +90,8 @@ class FakeAuthService implements AuthService {
   Future<bool> register({
     required String email,
     required String password,
-    required String fullName,
+    required String firstName,
+    required String lastName,
   }) async {
     if (accounts.containsKey(email)) {
       throw const AuthException(
@@ -101,13 +102,16 @@ class FakeAuthService implements AuthService {
     if (confirmEmail) return false;
     _change(
       AuthChangeEvent.signedIn,
-      fakeSession(name: fullName, email: email),
+      fakeSession(name: '$firstName $lastName', email: email),
     );
     return true;
   }
 
   @override
-  Future<void> signInWithGitHub() async => gitHubLogins++;
+  Future<void> signInWithGoogle() async => googleLogins++;
+
+  @override
+  Future<void> signInWithGitHub() async {}
 
   @override
   Future<void> signOut() async => _change(AuthChangeEvent.signedOut, null);

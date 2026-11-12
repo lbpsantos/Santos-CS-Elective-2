@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'providers/theme_provider.dart';
 import 'routing/app_router.dart';
 import 'theme/app_them.dart';
 
@@ -31,22 +32,16 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // The router sends logged-out users to the login page.
     final appRouter = ref.watch(routerProvider);
+    // Light / dark mode, switched with the button in the app bar.
+    final themeMode = ref.watch(themeModeProvider);
 
-    // theme toggle (Light / Dark mode)
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeModeNotifier,
-      builder: (context, currentThemeMode, _) {
-        return MaterialApp.router(
-          debugShowCheckedModeBanner: false,
-          title: 'Shop App',
-          // theme configurations
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: currentThemeMode,
-          //  loads the login page or the homescreen
-          routerConfig: appRouter,
-        );
-      },
+    return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
+      title: 'Book Shop',
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: themeMode,
+      routerConfig: appRouter,
     );
   }
 }

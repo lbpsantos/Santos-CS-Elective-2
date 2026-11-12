@@ -205,7 +205,13 @@ void main() {
     );
 
     final saved = await service.addProduct(
-      const Product(name: 'Book 21', author: 'Author', price: 399, genreId: 5),
+      const Product(
+        name: 'Book 21',
+        author: 'Author',
+        price: 399,
+        genreId: 5,
+        stock: 7,
+      ),
     );
 
     final request = requests.single;
@@ -215,6 +221,7 @@ void main() {
     expect(sent['name'], 'Book 21');
     expect(sent['price'], 399);
     expect(sent['image_url'], isNull);
+    expect(sent['stock'], 7);
     // The genre is saved by its id; the name stays in the genres table
     expect(sent['genre_id'], 5);
     expect(sent.containsKey('genre'), isFalse);
@@ -266,5 +273,47 @@ void main() {
     );
 
     expect(friendlyErrorMessage(error), contains('supabase/products.sql'));
+  });
+
+  test('genres can be added, renamed and deleted by id', () async {
+    final service = serviceThatReplies((request) async {
+      if (request.method == 'POST') {
+        return jsonReply({'id': 8, 'name': 'Sci-Fi'}, status: 201);
+      }
+      if (request.method == 'PATCH') {
+        return jsonReply([
+          {'id': 8, 'name': 'Space'},
+        ]);
+      }
+      return jsonReply([
+        {'id': 8},
+      ]);
+    });
+
+    final added = await service.addGenre('Sci-Fi');
+    final renamed = await service.renameGenre(8, 'Space');
+    await service.deleteGenre(8);
+
+    expect(requests.map((request) => request.url.path).toSet(), {
+      '/rest/v1/genres',
+    });
+    expect(requests.map((request) => request.method), [
+      'POST',
+      'PATCH',
+      'DELETE',
+    ]);
+    expect(jsonDecode(requests.first.body), {'name': 'Sci-Fi'});
+    expect(requests[1].url.queryParameters['id'], 'eq.8');
+    expect(added.id, 8);
+    expect(renamed.name, 'Space');
+  });
+
+  test('a blocked change explains it is a permission problem', () {
+    const error = PostgrestException(
+      message: 'new row violates row-level security policy',
+      code: '42501',
+    );
+
+    expect(friendlyErrorMessage(error), contains('Permission denied'));
   });
 }

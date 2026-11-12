@@ -15,7 +15,8 @@ const sampleGenres = [
 // [count] simple books with ids 1..count. Prices go up by ₱10 per book
 // (₱310, ₱320, ...), ratings go 3.5, 4.0, 4.5, 5.0, 3.5, ... and genres go
 // Magic, Mystery, Adventure, Magic, ... (with 20 books: 7 Magic books).
-List<Product> sampleBooks(int count) {
+// Every book has [stock] copies.
+List<Product> sampleBooks(int count, {int stock = 5}) {
   return [
     for (var i = 1; i <= count; i++)
       Product(
@@ -26,6 +27,7 @@ List<Product> sampleBooks(int count) {
         rating: 3.5 + (i % 4) * 0.5,
         genreId: sampleGenres[i % 3].id,
         genre: sampleGenres[i % 3].name,
+        stock: stock,
       ),
   ];
 }
@@ -34,8 +36,9 @@ List<Product> sampleBooks(int count) {
 // the provider and widget tests run without a real database.
 // The real Supabase queries are tested in product_service_test.dart.
 class FakeProductService implements ProductService {
-  FakeProductService(List<Product> books, {this.genres = sampleGenres})
-    : books = [...books];
+  FakeProductService(List<Product> books, {List<Genre> genres = sampleGenres})
+    : books = [...books],
+      genres = [...genres];
 
   final List<Product> books;
   final List<Genre> genres;
@@ -80,7 +83,37 @@ class FakeProductService implements ProductService {
   }
 
   @override
-  Future<List<Genre>> fetchGenres() async => genres;
+  Future<List<Genre>> fetchGenres() async =>
+      [...genres]..sort((a, b) => a.name.compareTo(b.name));
+
+  @override
+  Future<Genre> addGenre(String name) async {
+    final genre = Genre(
+      id: genres.map((genre) => genre.id).fold(0, max) + 1,
+      name: name,
+    );
+    genres.add(genre);
+    return genre;
+  }
+
+  @override
+  Future<Genre> renameGenre(int id, String name) async {
+    final index = genres.indexWhere((genre) => genre.id == id);
+    genres[index] = Genre(id: id, name: name);
+    for (var i = 0; i < books.length; i++) {
+      if (books[i].genreId == id) books[i] = _saved(books[i], books[i].id!);
+    }
+    return genres[index];
+  }
+
+  @override
+  Future<void> deleteGenre(int id) async {
+    genres.removeWhere((genre) => genre.id == id);
+    // Like "on delete set null": the books lose their genre.
+    for (var i = 0; i < books.length; i++) {
+      if (books[i].genreId == id) books[i] = _saved(books[i], books[i].id!);
+    }
+  }
 
   @override
   Future<PriceBounds?> fetchPriceBounds() async {
@@ -142,6 +175,7 @@ class FakeProductService implements ProductService {
       genreId: genreName == null ? null : product.genreId,
       genre: genreName ?? '',
       rating: product.rating,
+      stock: product.stock,
     );
   }
 }

@@ -1,12 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../models/cart.dart';
 import '../models/genre.dart';
 import '../models/product.dart';
 import '../models/product_filter.dart';
 import '../models/product_page.dart';
 import '../services/product_service.dart';
+import '../services/storage_service.dart';
 import 'filter_provider.dart';
 import 'pagination_provider.dart';
 
@@ -14,6 +16,11 @@ import 'pagination_provider.dart';
 // they don't need a real Supabase project.
 final productServiceProvider = Provider<ProductService>(
   (ref) => ProductService(Supabase.instance.client),
+);
+
+// Gives the app the StorageService (book cover uploads).
+final storageServiceProvider = Provider<StorageService>(
+  (ref) => StorageService(Supabase.instance.client),
 );
 
 // The books on the current page, loaded from Supabase.
@@ -51,7 +58,7 @@ final genresProvider = FutureProvider<List<Genre>>(
   retry: (retryCount, error) => null,
 );
 
-// Add, edit and delete books.
+// Add, edit and delete books (admins only; Supabase checks this too).
 //
 // This is kept apart from productsProvider on purpose. productsProvider
 // rebuilds whenever the page or the filter changes, and Riverpod stops a
@@ -64,6 +71,11 @@ class ProductActions {
 
   final Ref ref;
 
+  // Uploads a picked cover to Supabase Storage and returns its link.
+  Future<String> uploadCover(Uint8List bytes, String fileName) {
+    return ref.read(storageServiceProvider).uploadCover(bytes, fileName);
+  }
+
   Future<Product> addProduct(Product product) async {
     final saved = await ref.read(productServiceProvider).addProduct(product);
     // New books are listed first, so go to page 1 where the new book is.
@@ -74,16 +86,12 @@ class ProductActions {
 
   Future<Product> updateProduct(Product product) async {
     final saved = await ref.read(productServiceProvider).updateProduct(product);
-    // Show the new title and price in the cart too.
-    updateCartProduct(saved);
     _reloadShop();
     return saved;
   }
 
   Future<void> deleteProduct(Product product) async {
     await ref.read(productServiceProvider).deleteProduct(product.id!);
-    // A deleted book can't stay in the cart.
-    removeCartItem(product.id);
     _reloadShop();
   }
 
@@ -93,5 +101,40 @@ class ProductActions {
     ref.invalidate(productsProvider);
     ref.invalidate(priceBoundsProvider);
     ref.invalidate(featuredProductProvider);
+  }
+}
+
+// Add, rename and delete genres (the categories). Admins only.
+final genreActionsProvider = Provider<GenreActions>(GenreActions.new);
+
+class GenreActions {
+  GenreActions(this.ref);
+
+  final Ref ref;
+
+  ProductService get _service => ref.read(productServiceProvider);
+
+  Future<Genre> addGenre(String name) async {
+    final genre = await _service.addGenre(name.trim());
+    ref.invalidate(genresProvider);
+    return genre;
+  }
+
+  Future<Genre> renameGenre(Genre genre, String name) async {
+    final saved = await _service.renameGenre(genre.id, name.trim());
+    ref.invalidate(genresProvider);
+    // The books show their genre's name.
+    ref.invalidate(productsProvider);
+    return saved;
+  }
+
+  Future<void> deleteGenre(Genre genre) async {
+    await _service.deleteGenre(genre.id);
+    ref.invalidate(genresProvider);
+    // Books of that genre now have no genre; a filter on it shows nothing.
+    if (ref.read(productFilterProvider).genreId == genre.id) {
+      ref.read(productFilterProvider.notifier).setGenre(null);
+    }
+    ref.invalidate(productsProvider);
   }
 }

@@ -17,7 +17,7 @@ Future<bool> confirmAndDeleteProduct(
     builder: (dialogContext) {
       final colors = Theme.of(dialogContext).colorScheme;
       return AlertDialog(
-        title: const Text('Delete Book?'),
+        title: Text('Delete "${product.name}"?'),
         content: Text(
           '"${product.name}" will be removed from the shop. '
           'This cannot be undone.',

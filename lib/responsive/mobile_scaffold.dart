@@ -36,7 +36,7 @@ class MobileScaffold extends StatelessWidget {
         crossAxisCount: 2, // 2 columns on mobile screens
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        childAspectRatio: 0.48, // Roomy aspect ratio preventing any vertical overflow
+        childAspectRatio: 0.42, // tall enough for the cover, text and buttons
       ),
       itemCount: products.length,
       itemBuilder: (context, index) {

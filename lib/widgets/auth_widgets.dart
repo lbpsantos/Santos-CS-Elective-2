@@ -72,25 +72,24 @@ class OrDivider extends StatelessWidget {
   }
 }
 
-// "Continue with GitHub" - the 3rd-party login.
-class GitHubSignInButton extends ConsumerStatefulWidget {
-  const GitHubSignInButton({super.key});
+// "Continue with Google" - the 3rd-party login the project asks for.
+class GoogleSignInButton extends ConsumerStatefulWidget {
+  const GoogleSignInButton({super.key});
 
   @override
-  ConsumerState<GitHubSignInButton> createState() =>
-      _GitHubSignInButtonState();
+  ConsumerState<GoogleSignInButton> createState() =>
+      _GoogleSignInButtonState();
 }
 
-class _GitHubSignInButtonState extends ConsumerState<GitHubSignInButton> {
+class _GoogleSignInButtonState extends ConsumerState<GoogleSignInButton> {
   bool _opening = false;
 
   Future<void> _signIn() async {
     setState(() => _opening = true);
-    ref.read(authErrorProvider.notifier).clear();
     try {
-      // Opens GitHub. When the user comes back, the session arrives through
+      // Opens Google. When the user comes back, the session arrives through
       // sessionProvider and the router opens the shop.
-      await ref.read(authServiceProvider).signInWithGitHub();
+      await ref.read(authActionsProvider).signInWithGoogle();
     } catch (error) {
       ref.read(authErrorProvider.notifier).show(friendlyAuthMessage(error));
     } finally {
@@ -116,10 +115,37 @@ class _GitHubSignInButtonState extends ConsumerState<GitHubSignInButton> {
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.code),
+            : const _GoogleLogo(),
         label: const Text(
-          'Continue with GitHub',
+          'Continue with Google',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+// A simple "G" in Google's blue, so no image file is needed.
+class _GoogleLogo extends StatelessWidget {
+  const _GoogleLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.black12),
+      ),
+      child: const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
         ),
       ),
     );

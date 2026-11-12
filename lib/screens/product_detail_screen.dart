@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../models/cart.dart';
 import '../models/product.dart';
+import '../providers/auth_provider.dart';
+import '../providers/cart_provider.dart';
+import '../routing/app_router.dart';
+import '../widgets/add_to_cart.dart';
+import '../widgets/app_bar_buttons.dart';
 import '../widgets/delete_product_dialog.dart';
 import '../widgets/product_cover.dart';
-import '../widgets/product_form_sheet.dart';
 
-// ProductDetailScreen manages local quantity selection state with standard setState()
-// The Edit and Delete buttons in the app bar change the book in Supabase.
+// One book's details.
+// Admins: Edit and Delete buttons in the app bar.
+// Customers: pick a quantity (up to the stock) and Add to Cart.
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final Product product;
 
@@ -31,7 +35,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   late Product _product = widget.product;
 
   Future<void> _editBook() async {
-    final saved = await showProductForm(context, product: _product);
+    final saved = await context.push<Product>(
+      AppRoutes.productForm,
+      extra: _product,
+    );
     if (saved != null && mounted) {
       setState(() => _product = saved);
     }
@@ -44,45 +51,31 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       if (context.canPop()) {
         context.pop();
       } else {
-        context.go('/');
+        context.go(AppRoutes.home);
       }
     }
   }
 
+  // How many more copies can still go in the cart.
+  int get _available =>
+      _product.stock - ref.read(cartProvider.notifier).quantityOf(_product.id);
+
   void _incrementQuantity() {
-    setState(() {
-      _quantity++;
-    });
+    if (_quantity < _available) setState(() => _quantity++);
   }
 
   void _decrementQuantity() {
-    if (_quantity > 1) {
-      setState(() {
-        _quantity--;
-      });
-    }
+    if (_quantity > 1) setState(() => _quantity--);
   }
 
   void _handleAddToCart() {
-    // Add to standard in-memory cart list
-    addToCart(_product, _quantity);
-
-    // Refresh local state and show confirmation
-    setState(() {});
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Added $_quantity ${_product.name} to Cart!',
-        ),
-        action: SnackBarAction(
-          label: 'View Cart',
-          onPressed: () => context.push('/cart').then((_) => setState(() {})),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
+    final added = addToCartWithMessage(
+      context,
+      ref,
+      _product,
+      quantity: _quantity.clamp(1, _available),
     );
+    if (added) setState(() => _quantity = 1);
   }
 
   @override
@@ -90,73 +83,31 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     final theme = Theme.of(context);
     final book = _product;
     final isDark = theme.brightness == Brightness.dark;
+    final isAdmin = ref.watch(isAdminProvider);
+    // Rebuild when the cart changes, so the copies left are right.
+    final inCart = ref
+        .watch(cartProvider)
+        .where((item) => item.product.id == book.id)
+        .fold(0, (sum, item) => sum + item.quantity);
+    final available = book.stock - inCart;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Book Details'),
         actions: [
-          // ⋮ menu with Edit and Delete (same as on the book cards)
-          PopupMenuButton<String>(
-            tooltip: 'Edit or delete',
-            onSelected: (choice) =>
-                choice == 'edit' ? _editBook() : _deleteBook(),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'edit',
-                child: ListTile(
-                  leading: Icon(Icons.edit_outlined),
-                  title: Text('Edit'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: ListTile(
-                  leading: Icon(Icons.delete_outline),
-                  title: Text('Delete'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
-          // Cart button with live item count badge
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                tooltip: 'View Cart',
-                icon: const Icon(Icons.shopping_bag_outlined),
-                onPressed: () {
-                  context.push('/cart').then((_) => setState(() {}));
-                },
-              ),
-              if (totalCartCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 18,
-                      minHeight: 18,
-                    ),
-                    child: Text(
-                      '$totalCartCount',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          if (isAdmin) ...[
+            IconButton(
+              tooltip: 'Edit',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _editBook,
+            ),
+            IconButton(
+              tooltip: 'Delete',
+              icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+              onPressed: _deleteBook,
+            ),
+          ] else
+            const CartButton(),
           const SizedBox(width: 8),
         ],
       ),
@@ -177,7 +128,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.25),
+                        color: Colors.black.withValues(alpha: 0.25),
                         blurRadius: 16,
                         offset: const Offset(4, 8),
                       ),
@@ -233,10 +184,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       theme: theme,
                     ),
                     _buildInfoBadge(
-                      icon: Icons.menu_book,
-                      iconColor: Colors.blueAccent,
-                      label: 'Book',
-                      subtitle: 'Format',
+                      icon: Icons.inventory_2_outlined,
+                      iconColor: book.inStock
+                          ? Colors.green
+                          : theme.colorScheme.error,
+                      label: book.inStock ? '${book.stock}' : 'None',
+                      subtitle: 'In stock',
                       theme: theme,
                     ),
                   ],
@@ -277,7 +230,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         book.description,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           height: 1.5,
-                          color: theme.colorScheme.onSurface.withOpacity(0.85),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                         ),
                       ),
                     ],
@@ -285,79 +238,103 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Interactive Quantity Stepper
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Quantity:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton.filledTonal(
-                      onPressed: _decrementQuantity,
-                      icon: const Icon(Icons.remove, size: 18),
-                      tooltip: 'Decrease quantity',
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        '$_quantity',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton.filledTonal(
-                      onPressed: _incrementQuantity,
-                      icon: const Icon(Icons.add, size: 18),
-                      tooltip: 'Increase quantity',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Modern Add to Cart Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: theme.colorScheme.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                    ),
-                    onPressed: _handleAddToCart,
-                    icon: const Icon(Icons.shopping_bag_outlined),
-                    label: Text(
-                      'Add to Cart • ₱${(book.price * _quantity).toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // View Cart Link
-                TextButton(
-                  onPressed: () => context.push('/cart').then((_) => setState(() {})),
-                  child: const Text('View Shopping Cart'),
-                ),
+                if (!isAdmin) ..._buildBuyBox(theme, book, inCart, available),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  // Customers only: the quantity picker and the Add to Cart button.
+  List<Widget> _buildBuyBox(
+    ThemeData theme,
+    Product book,
+    int inCart,
+    int available,
+  ) {
+    if (available <= 0) {
+      return [
+        Text(
+          book.inStock
+              ? 'All $inCart copies in stock are already in your cart.'
+              : 'This book is out of stock.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: theme.colorScheme.error,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (inCart > 0)
+          TextButton(
+            onPressed: () => context.push(AppRoutes.cart),
+            child: const Text('View Shopping Cart'),
+          ),
+      ];
+    }
+    final quantity = _quantity.clamp(1, available);
+    return [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            'Quantity:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(width: 16),
+          IconButton.filledTonal(
+            onPressed: quantity > 1 ? _decrementQuantity : null,
+            icon: const Icon(Icons.remove, size: 18),
+            tooltip: 'Decrease quantity',
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '$quantity',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: quantity < available ? _incrementQuantity : null,
+            icon: const Icon(Icons.add, size: 18),
+            tooltip: 'Increase quantity',
+          ),
+        ],
+      ),
+      if (inCart > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '$inCart already in your cart · $available more available',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      const SizedBox(height: 24),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(26),
+            ),
+          ),
+          onPressed: _handleAddToCart,
+          icon: const Icon(Icons.shopping_bag_outlined),
+          label: Text(
+            'Add to Cart • ₱${(book.price * quantity).toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      TextButton(
+        onPressed: () => context.push(AppRoutes.cart),
+        child: const Text('View Shopping Cart'),
+      ),
+    ];
   }
 
   Widget _buildInfoBadge({
@@ -375,7 +352,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         color: isDark ? const Color(0xFF26211E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white12 : Colors.black.withOpacity(0.06),
+          color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
         ),
       ),
       child: Column(

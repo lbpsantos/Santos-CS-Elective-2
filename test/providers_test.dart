@@ -4,23 +4,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_first_flutter_ui/models/cart.dart';
 import 'package:my_first_flutter_ui/models/product.dart';
 import 'package:my_first_flutter_ui/models/product_filter.dart';
+import 'package:my_first_flutter_ui/providers/auth_provider.dart';
+import 'package:my_first_flutter_ui/providers/cart_provider.dart';
 import 'package:my_first_flutter_ui/providers/filter_provider.dart';
+import 'package:my_first_flutter_ui/providers/order_provider.dart';
 import 'package:my_first_flutter_ui/providers/pagination_provider.dart';
 import 'package:my_first_flutter_ui/providers/products_provider.dart';
 import 'package:my_first_flutter_ui/widgets/price_range_filter.dart';
 
+import 'fake_auth_service.dart';
+import 'fake_order_service.dart';
 import 'fake_product_service.dart';
+import 'fake_profile_service.dart';
 
-// Tests for the Riverpod state: pages, filters and add / edit / delete.
+// Tests for the Riverpod state: pages, filters, add / edit / delete, the
+// cart and checkout.
 void main() {
   late FakeProductService service;
+  late FakeAuthService auth;
+  late FakeOrderService orders;
   late ProviderContainer container;
 
   setUp(() {
-    clearCart();
     service = FakeProductService(sampleBooks(20));
+    auth = FakeAuthService(fakeSession());
+    orders = FakeOrderService(service);
     container = ProviderContainer.test(
-      overrides: [productServiceProvider.overrideWithValue(service)],
+      overrides: [
+        productServiceProvider.overrideWithValue(service),
+        authServiceProvider.overrideWithValue(auth),
+        profileServiceProvider.overrideWithValue(FakeProfileService()),
+        orderServiceProvider.overrideWithValue(orders),
+      ],
     );
     // Keep the providers active, like the home screen does.
     container.listen(productsProvider, (previous, next) {});
@@ -125,19 +140,98 @@ void main() {
     expect(after.products.first.id, 19);
   });
 
-  test('editing or deleting a book also updates the cart', () async {
-    final book = service.books.first;
-    addToCart(book, 2);
+  group('cart', () {
+    late CartNotifier cart;
+    setUp(() {
+      container.listen(cartProvider, (previous, next) {});
+      cart = container.read(cartProvider.notifier);
+    });
 
-    final actions = container.read(productActionsProvider);
-    await actions.updateProduct(
-      Product(id: book.id, name: book.name, author: book.author, price: 999),
-    );
-    expect(cartItems.single.product.price, 999);
-    expect(cartItems.single.quantity, 2);
+    test('adds books, counts copies and keeps a running total', () {
+      final books = service.books; // ₱310, ₱320, ...
+      cart.add(books[0], quantity: 2);
+      cart.add(books[1]);
+      cart.add(books[0]); // same book: the quantity goes up
 
-    await actions.deleteProduct(cartItems.single.product);
-    expect(cartItems, isEmpty);
+      expect(container.read(cartProvider), hasLength(2));
+      expect(container.read(cartCountProvider), 4);
+      expect(container.read(cartTotalProvider), 310 * 3 + 320);
+    });
+
+    test('refuses out-of-stock books and quantities above the stock', () {
+      const soldOut = Product(id: 99, name: 'Gone', author: 'A', price: 1);
+      expect(() => cart.add(soldOut), throwsA(isA<CartException>()));
+
+      final book = service.books.first; // 5 in stock
+      cart.add(book, quantity: 5);
+      expect(() => cart.add(book), throwsA(isA<CartException>()));
+      expect(() => cart.increment(book.id), throwsA(isA<CartException>()));
+      expect(container.read(cartCountProvider), 5);
+    });
+
+    test('changing the quantity to 0 removes the book', () {
+      final book = service.books.first;
+      cart.add(book, quantity: 2);
+      cart.decrement(book.id);
+      expect(container.read(cartCountProvider), 1);
+      cart.decrement(book.id);
+      expect(container.read(cartProvider), isEmpty);
+    });
+
+    test('empties on logout', () async {
+      container.listen(sessionProvider, (previous, next) {});
+      cart.add(service.books.first);
+      await auth.signOut();
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(cartProvider), isEmpty);
+    });
+  });
+
+  group('checkout', () {
+    setUp(() {
+      container.listen(cartProvider, (previous, next) {});
+    });
+
+    test('sends only ids and quantities, then empties the cart', () async {
+      final cart = container.read(cartProvider.notifier);
+      cart.add(service.books[0], quantity: 2); // ₱310
+      cart.add(service.books[1]); // ₱320
+
+      final order = await container.read(orderActionsProvider).checkout();
+
+      expect(orders.sentItems.single, [
+        {'product_id': 1, 'quantity': 2},
+        {'product_id': 2, 'quantity': 1},
+      ]);
+      expect(order.total, 310 * 2 + 320);
+      expect(order.items.first.productName, 'Book 1');
+      expect(container.read(cartProvider), isEmpty);
+      expect(service.books[0].stock, 3);
+      final history = await container.read(myOrdersProvider.future);
+      expect(history.single.id, order.id);
+    });
+
+    test('a failed checkout keeps the cart and saves nothing', () async {
+      final cart = container.read(cartProvider.notifier);
+      cart.add(service.books[0], quantity: 2);
+      service.books[0] = service.books[0].copyWith(stock: 1);
+
+      await expectLater(
+        container.read(orderActionsProvider).checkout(),
+        throwsA(anything),
+      );
+      expect(container.read(cartCountProvider), 2);
+      expect(orders.orders, isEmpty);
+      expect(service.books[0].stock, 1);
+    });
+
+    test("an empty cart can't be checked out", () async {
+      await expectLater(
+        container.read(orderActionsProvider).checkout(),
+        throwsA(isA<CartException>()),
+      );
+      expect(orders.sentItems, isEmpty);
+    });
   });
 
   group('price slider scale', () {
